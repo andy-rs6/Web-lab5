@@ -6,6 +6,38 @@ from bs4 import BeautifulSoup
 import json 
 import hashlib
 
+def parse_HTML(response):
+    # Parse the HTML response using BeautifulSoup
+    soup = BeautifulSoup(response, 'html.parser')
+    
+    # Find all elements of interest: headers (h1-h6) and paragraphs (p)
+    elements = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'])
+    
+    # Initialize a list to store parsed data
+    data = []
+
+    # Iterate over found elements
+    for element in elements:
+        # If the element is a header
+        if element.name.startswith('h'):
+            # Append header text with respective level indicator to the data list
+            data.append(f"{element.name.upper()}: {element.get_text()}")
+        # If the element is a paragraph
+        elif element.name == 'p':
+            # Append paragraph text with 'P' indicator to the data list
+            data.append(f"P: {element.get_text()}")
+
+    # Find all anchor tags with href attribute (links)
+    links = soup.find_all('a', href=True)
+    # Extract href attribute value for links starting with 'http'
+    links_href = [link['href'] for link in links if link['href'].startswith('http')]
+    # Add a separator and links to the data list
+    data.append("-- Links --")
+    data += links_href
+
+    # Return the parsed data
+    return data
+
 def handle_TCP(url):
     try:
         # Parse the URL to extract host and path
@@ -60,7 +92,7 @@ def handle_HTTP(url):
                     # Check if content type is HTML
                     if 'text/html' in content_type:
                         # Call function to parse HTML response
-                        parsed_response = #parse the html
+                        parsed_response = parse_HTML(headers_and_body)
                         return parsed_response
                     # Check if content type is JSON
                     elif 'application/json' in content_type:
