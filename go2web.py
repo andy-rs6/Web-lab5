@@ -5,11 +5,13 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import json 
 import hashlib
+import requests
+from tinydb import TinyDB, Query
+
 
 def parse_HTML(response):
     # Parse the HTML response using BeautifulSoup
     soup = BeautifulSoup(response, 'html.parser')
-    
     # Find all elements of interest: headers (h1-h6) and paragraphs (p)
     elements = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'])
     
@@ -72,6 +74,12 @@ def handle_TCP(url):
 
 def handle_HTTP(url):
     try:
+        if is_cached(url):
+            # If the URL is cached, print a message indicating that a cached response is being retrieved
+            print("Retrieving cached response for:", url)
+            # Retrieve and return the cached response
+            return retrieve_cached_response(url)
+                
         # Make a TCP request to the specified URL
         response = handle_TCP(url)
         
@@ -93,11 +101,13 @@ def handle_HTTP(url):
                     if 'text/html' in content_type:
                         # Call function to parse HTML response
                         parsed_response = parse_HTML(headers_and_body)
+                        cache_response(url, parsed_response)  # Cache HTML responses
                         return parsed_response
                     # Check if content type is JSON
                     elif 'application/json' in content_type:
                         # Parse JSON data
                         json_data = json.loads(headers_and_body)
+                        cache_response(url, json_data)  # Cache JSON responses
                         return json_data
                     else:
                         # Unsupported content type
@@ -115,18 +125,72 @@ def handle_HTTP(url):
         # Catch and return any exceptions as a string
         return [str(e)]
 
+
+# Define the cache file name
+cache_file = "cache_data.json"
+# Initialize TinyDB with the cache file
+db = TinyDB(cache_file)
+
+# Function to hash a URL using MD5
+def hash_url(url):
+    return hashlib.md5(url.encode()).hexdigest()
+
+# Function to cache a response with its corresponding hashed URL
+def cache_response(url, response):
+    db.insert({'url': hash_url(url), 'response': response})
+
+# Function to check if a URL is cached
+def is_cached(url):
+    return db.contains(Query().url == hash_url(url))
+
+# Function to retrieve cached response for a URL
+def retrieve_cached_response(url):
+    result = db.get(Query().url == hash_url(url))
+    return result['response']
+
+def handle_SEARCH(term):
+    search_url = f"https://www.google.md/search?q={term}"
+    response = requests.get(search_url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    # Extract top 10 results and print them
+    for i, result in enumerate(soup.find_all('a')[16:26], start=1):
+        print(f"{i}. {result.text} - {result['href']}")
+        
+
 def main():
     args = sys.argv[1:]
-    print(args)
 
     if not args:
         print("Follow the help conditions !")
         sys.exit()
 
-    elif '-h' in args:
+    if '-h' in args:
         print("go2web -u <URL>         # make an HTTP request to the specified URL and print the response")
         print("go2web -s <search-term> # make an HTTP request to search the term using your favorite search engine and print top 10 results")
         print("go2web -h               # show this help")
+
+
+    elif '-u' in args:
+        url_index = args.index('-u') + 1
+        if url_index < len(args):
+            url = args[url_index]
+            response = handle_HTTP(url)
+            print("HTML data", url, ":")
+            for info in response:
+                print(info)
+        else:
+            print("Need to provide the url")
+            sys.exit()
+
+    elif '-s' in args:
+        search_index = args.index('-s') + 1
+        if search_index < len(args):
+            term = ' '.join(args[search_index:])
+            print("Search results for", term, ":")
+            handle_SEARCH(term)
+        else:
+            print("Error: No search term provided after -s")
+            sys.exit()
 
 if __name__ == "__main__":
     main()
